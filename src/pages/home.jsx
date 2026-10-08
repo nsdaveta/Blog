@@ -1,0 +1,543 @@
+import React, { useEffect, useState, useRef } from 'react'
+import api from '../api'
+import { Link, useSearchParams, useNavigate } from 'react-router-dom'
+import { VscArrowLeft } from 'react-icons/vsc'
+
+import './home.css'
+
+// Decode userId from the stored JWT
+const getCurrentUserId = () => {
+  try {
+    const token = localStorage.getItem('token');
+    if (!token) return null;
+    const base64Url = token.split('.')[1];
+    const base64 = base64Url.replace(/-/g, '+').replace(/_/g, '/');
+    const jsonPayload = decodeURIComponent(atob(base64).split('').map(function (c) {
+      return '%' + ('00' + c.charCodeAt(0).toString(16)).slice(-2);
+    }).join(''));
+    return JSON.parse(jsonPayload).id || null;
+  } catch (e) {
+    console.error("JWT Decode Error:", e);   
+    return null;
+  }
+}
+
+// Sum all per-user counts from an action array
+const totalCount = (arr = []) => arr.reduce((sum, e) => sum + (e.count || 0), 0)
+
+// Find current user's count from an action array
+const myCount = (arr = [], userId) =>
+  arr.find(e => e.userId === userId || e.userId?._id === userId)?.count || 0
+
+// ── Windows 11 High-Fidelity Share Pane (AOS Replacement) ─────────────
+const ShareModal = ({ blog, onClose, onShareRecorded }) => {
+  const shareUrl = `https://blog-server-7c1i.onrender.com/blog/preview/${blog._id}`
+  const [copied, setCopied] = useState(false)
+
+  const handleCopy = async () => {
+    try {
+      await navigator.clipboard.writeText(shareUrl)
+      setCopied(true)
+      setTimeout(() => setCopied(false), 2000)
+    } catch (err) {
+      console.error('Copy failed', err)
+    }
+  }
+
+  const socialLinks = [
+    { name: 'Copy Link', icon: '🔗', action: handleCopy, isCopy: true },
+    { name: 'WhatsApp', icon: '💬', url: `https://wa.me/?text=${encodeURIComponent(blog.title + ': ' + shareUrl)}` },
+    { name: 'Telegram', icon: '✈️', url: `https://t.me/share/url?url=${encodeURIComponent(shareUrl)}&text=${encodeURIComponent(blog.title)}` },
+    { name: 'Twitter (X)', icon: '𝕏', url: `https://x.com/intent/tweet?text=${encodeURIComponent(blog.title)}&url=${encodeURIComponent(shareUrl)}` },
+    { name: 'Facebook', icon: '🫂', url: `https://www.facebook.com/sharer/sharer.php?u=${encodeURIComponent(shareUrl)}` },
+    { name: 'Gmail', icon: '✉️', url: `mailto:?subject=${encodeURIComponent(blog.title)}&body=${encodeURIComponent(shareUrl)}` },
+    { name: 'OneDrive', icon: '☁️', url: '#' },
+    { name: 'More Apps', icon: '···', url: '#' }
+  ]
+
+  const onSocialClick = (item) => {
+    if (item.action) {
+       item.action();
+    } else if (item.url && item.url !== '#') {
+      window.open(item.url, '_blank', 'width=600,height=500')
+      onShareRecorded()
+    }
+  }
+
+  const suggestedContacts = [
+    { name: 'Recent', icon: '👤' },
+    { name: 'Frequent', icon: '👥' },
+    { name: 'Family', icon: '🏠' }
+  ]
+
+  return (
+    <div className="share-overlay active">
+      <div className="share-overlay-backdrop" onClick={onClose} />
+      <div className="share-modal-content">
+        
+        {/* Windows 11 Style Header */}
+        <div className="win11-share-header">
+          <div className="win11-share-title">Share</div>
+          <button className="win11-close-btn" onClick={onClose}>✕</button>
+        </div>
+
+        {/* App & Content Preview */}
+        <div className="win11-preview-section">
+          <div className="win11-app-icon">
+            <img src="/favicon.svg" alt="App Icon" style={{ width: '100%', height: '100%', objectFit: 'contain' }} />
+          </div>
+          <strong className="win11-preview-title">{blog.title}</strong>
+          <span className="win11-preview-subtitle">Blogify App • Story</span>
+        </div>
+
+        {/* Suggested Contacts Section */}
+        <div className="win11-section">
+          <span className="win11-section-label">Suggested</span>
+          <div className="win11-contacts-row">
+            {suggestedContacts.map(c => (
+              <div key={c.name} className="win11-contact-item">
+                <div className="win11-contact-avatar">{c.icon}</div>
+                <span className="win11-contact-name">{c.name}</span>
+              </div>
+            ))}
+          </div>
+        </div>
+
+        {/* Apps Section */}
+        <div className="win11-section">
+          <span className="win11-section-label">Share with apps</span>
+          <div className="win11-apps-grid">
+            {socialLinks.map(s => (
+              <div 
+                key={s.name} 
+                className={`win11-app-item ${s.isCopy && copied ? 'copied' : ''}`}
+                onClick={() => onSocialClick(s)}
+              >
+                <div className="win11-app-circle">{s.isCopy && copied ? '✓' : s.icon}</div>
+                <span className="win11-app-label">{s.isCopy && copied ? 'Copied' : s.name}</span>
+              </div>
+            ))}
+          </div>
+        </div>
+
+        {/* Footer */}
+        <div className="win11-footer">
+          <div className="win11-nearby-toggle">
+             📶 Nearby sharing: Off
+          </div>
+          <div style={{opacity: 0.5}}>More options</div>
+        </div>
+
+      </div>
+    </div>
+  )
+}
+
+// Individual blog card
+const BlogCard = ({ blog, index, currentUserId }) => {
+  const isLoggedIn = !!currentUserId
+
+  const [likes, setLikes] = useState(totalCount(blog.likes))
+  const [dislikes, setDislikes] = useState(totalCount(blog.dislikes))
+  const [shares, setShares] = useState(totalCount(blog.shares))
+  const [comments, setComments] = useState(blog.comments ?? [])
+  const [myLikes, setMyLikes] = useState(myCount(blog.likes, currentUserId))
+  const [myDislikes, setMyDislikes] = useState(myCount(blog.dislikes, currentUserId))
+  const [myShares, setMyShares] = useState(myCount(blog.shares, currentUserId))
+  const [showComments, setShowComments] = useState(false)
+  const [showShareModal, setShowShareModal] = useState(false)
+  const [commentText, setCommentText] = useState('')
+  const [submitting, setSubmitting] = useState(false)
+
+  const [isOverflowing, setIsOverflowing] = useState(false)
+  const [exceedsLineLimit, setExceedsLineLimit] = useState(false)
+  const textRef = useRef(null)
+
+  // Check if content exceeds 7 lines (by line breaks or estimated line count)
+  useEffect(() => {
+    if (!blog.content) {
+      setExceedsLineLimit(false)
+      return
+    }
+    // Count lines by splitting on newlines, but also estimate for long lines
+    const lines = blog.content.split(/\r?\n/)
+    let approxLines = 0
+    for (let line of lines) {
+      // Estimate: if line is long, it will wrap. Assume ~90 chars per line for preview width.
+      approxLines += Math.ceil(line.length / 90) || 1
+    }
+    setExceedsLineLimit(approxLines > 7)
+  }, [blog.content])
+
+  // Visual overflow detection (optional, fallback for edge cases)
+  useEffect(() => {
+    const checkOverflow = () => {
+      if (textRef.current) {
+        const { scrollHeight, clientHeight } = textRef.current
+        setIsOverflowing(scrollHeight > clientHeight + 1)
+      }
+    }
+    checkOverflow()
+    const resizeObserver = new ResizeObserver(() => {
+      requestAnimationFrame(checkOverflow)
+    })
+    if (textRef.current) resizeObserver.observe(textRef.current)
+    return () => resizeObserver.disconnect()
+  }, [blog.content])
+
+  // ── Like ──────────────────────────────────────────────────
+  const handleLike = async () => {
+    if (!isLoggedIn) { return }
+    const storedUser = JSON.parse(localStorage.getItem('userdata') || '{}');
+    if (blog.author === storedUser.name) {
+      return;
+    }
+    try {
+      const res = await api.post(`/like/${blog._id}`, {}, {
+        headers: {
+          Authorization: `Bearer ${localStorage.getItem('token')}`
+        }
+      })
+      setLikes(res.data.total)
+      setMyLikes(res.data.userCount)
+      // Clear dislike locally if server removed it
+      if (res.data.dislikesTotal !== undefined) {
+        setDislikes(res.data.dislikesTotal)
+        setMyDislikes(0)
+      }
+    } catch (err) {
+      console.error(err);
+    }
+  }
+
+  // ── Share ────────────────────────────────────────────────
+  const handleShare = async (e) => {
+    if (e) { e.preventDefault(); e.stopPropagation(); }
+    if (!isLoggedIn) { return }
+
+    // ── NATIVE vs CUSTOM PRIORITY ──
+    // On Mobile (Android/iOS), Native Share is still superior and stable.
+    // On Desktop, we now use our high-fidelity Windows 11 replica.
+    if (navigator.share) {
+      try {
+        const shareUrl = `https://blog-server-7c1i.onrender.com/blog/preview/${blog._id}`;
+        await navigator.share({
+          title: blog.title || 'Blog Post',
+          text: `Check out this blog: ${blog.title}`,
+          url: shareUrl
+        });
+        recordShare();
+      } catch (err) {
+        if (err.name !== 'AbortError') setShowShareModal(true);
+      }
+    } else {
+      // Primary High-Fidelity Windows 11 Replica for Desktop
+      setShowShareModal(true);
+      recordShare();
+    }
+  }
+
+  const recordShare = async () => {
+    try {
+      if (!blog || !blog._id) return;
+      const res = await api.post(`/share/${blog._id}`, {}, {
+        headers: {
+          Authorization: `Bearer ${localStorage.getItem('token')}`
+        }
+      })
+      setShares(res.data.total)
+      setMyShares(res.data.userCount)
+    } catch (err) {
+      console.error('Share record failed:', err)
+    }
+  }
+
+  // ── Dislike ───────────────────────────────────────────────
+  const handleDislike = async () => {
+    if (!isLoggedIn) { return }
+    const storedUser = JSON.parse(localStorage.getItem('userdata') || '{}');
+    if (blog.author === storedUser.name) {
+      return;
+    }
+    try {
+      const res = await api.post(`/dislike/${blog._id}`, {}, {
+        headers: {
+          Authorization: `Bearer ${localStorage.getItem('token')}`
+        }
+      })
+      setDislikes(res.data.total)
+      setMyDislikes(res.data.userCount)
+      // Clear like locally if server removed it
+      if (res.data.likesTotal !== undefined) {
+        setLikes(res.data.likesTotal)
+        setMyLikes(0)
+      }
+    } catch (err) {
+      console.error(err);
+    }
+  }
+
+
+  // ── Comment ───────────────────────────────────────────────
+  const handleComment = async (e) => {
+    e.preventDefault()
+    if (!isLoggedIn) { return }
+    if (!commentText.trim()) { return }
+    setSubmitting(true)
+    try {
+      const res = await api.post(`/comment/${blog._id}`, { text: commentText.trim() }, {
+        headers: {
+          Authorization: `Bearer ${localStorage.getItem('token')}`
+        }
+      })
+      setComments(prev => [...prev, res.data.comment])
+      setCommentText('')
+    } catch {
+      console.error('Failed to post comment')
+    } finally {
+      setSubmitting(false)
+    }
+  }
+
+  return (
+    <article
+      className="blog-card fade-in-up"
+      style={{ animationDelay: `${index * 0.07}s` }}
+    >
+      <img
+        className="blog-card-img"
+        src={blog.image?.url}
+        alt={blog.title || 'Blog Post'}
+        crossOrigin="anonymous"
+        referrerPolicy="no-referrer"
+        onError={(e) => { e.target.style.display = 'none' }}
+      />
+
+      <div 
+        className="blog-card-body" 
+        style={{ display: 'flex', flexDirection: 'column', flex: 1, minHeight: 0 }}
+      >
+        <span className="badge badge-accent">Article</span>
+        <h3>{blog.title || 'Untitled'}</h3>
+        <div
+          ref={textRef}
+          className="blog-card-preview-text"
+        >
+          {blog.content?.trim()}
+        </div>
+      </div>
+
+      <div className="blog-card-footer">
+        <span className="blog-card-author">By {blog.author || 'Unknown'}</span>
+        {(exceedsLineLimit || isOverflowing) && (
+          <Link to={`/read/${blog._id}`} className="btn btn-outline btn-sm">
+            Read More →
+          </Link>
+        )}
+      </div>
+
+      {/* ── Action bar ── */}
+      <div className="blog-card-actions">
+
+        <button
+          id={`btn-like-${blog._id}`}
+          className="card-action-btn"
+          onClick={handleLike}
+          title={isLoggedIn ? `You liked ${myLikes}×` : 'Like'}
+        >
+          👍
+          <span className="action-total">{likes}</span>
+          {isLoggedIn && myLikes > 0 && (
+            <span className="action-mine">you: {myLikes}</span>
+          )}
+        </button>
+
+        <button
+          id={`btn-dislike-${blog._id}`}
+          className="card-action-btn"
+          onClick={handleDislike}
+          title={isLoggedIn ? `You disliked ${myDislikes}×` : 'Dislike'}
+        >
+          👎
+          <span className="action-total">{dislikes}</span>
+          {isLoggedIn && myDislikes > 0 && (
+            <span className="action-mine">you: {myDislikes}</span>
+          )}
+        </button>
+
+        <button
+          id={`btn-comment-${blog._id}`}
+          className={`card-action-btn ${showComments ? 'card-action-btn--active' : ''}`}
+          onClick={() => setShowComments(s => !s)}
+          title="Comment"
+        >
+          💬
+          <span className="action-total">{comments.length}</span>
+        </button>
+
+        <button
+          id={`btn-share-${blog._id}`}
+          className="card-action-btn"
+          onClick={handleShare}
+          title={isLoggedIn ? `You shared ${myShares}×` : 'Share'}
+        >
+          🔗
+          <span className="action-total">{shares}</span>
+          {isLoggedIn && myShares > 0 && (
+            <span className="action-mine">you: {myShares}</span>
+          )}
+        </button>
+
+      </div>
+
+      {/* ── Inline comment panel ── */}
+      {showComments && (
+        <div className="card-comments-panel">
+
+          <form className="card-comment-form" onSubmit={handleComment}>
+            <textarea
+              id={`comment-text-${blog._id}`}
+              className="card-comment-input card-comment-textarea"
+              rows={2}
+              placeholder={isLoggedIn ? 'Write a comment…' : 'Log in to comment'}
+              value={commentText}
+              onChange={e => setCommentText(e.target.value)}
+              disabled={!isLoggedIn || submitting}
+              maxLength={500}
+            />
+            <button
+              id={`btn-submit-comment-${blog._id}`}
+              type="submit"
+              className="btn btn-primary btn-sm"
+              disabled={!isLoggedIn || submitting}
+            >
+              {submitting ? 'Posting…' : 'Post'}
+            </button>
+          </form>
+
+          {comments.length === 0 ? (
+            <p className="card-no-comments">No comments yet — be the first!</p>
+          ) : (
+            <ul className="card-comment-list">
+              {comments.slice().reverse().map(c => (
+                <li key={c._id} className="card-comment-item">
+                  <div className="card-comment-avatar">{(c.name || 'U')[0].toUpperCase()}</div>
+                  <div>
+                    <strong className="card-comment-name">{c.name}</strong>
+                    <p className="card-comment-text">{c.text}</p>
+                  </div>
+                </li>
+              ))}
+            </ul>
+          )}
+
+        </div>
+      )}
+      {/* ── Adaptive Share Modal Fallback ── */}
+      {showShareModal && (
+        <ShareModal
+          blog={blog}
+          onClose={() => setShowShareModal(false)}
+          onShareRecorded={recordShare}
+        />
+      )}
+    </article>
+  )
+}
+
+// Main home component
+const Home = () => {
+  const [blogs, setBlogs] = useState([])
+  const [loading, setLoading] = useState(true)
+  const navigate = useNavigate()
+  const [searchParams] = useSearchParams();
+  const searchResult = searchParams.get('search')?.toLowerCase() || '';
+
+  const currentUserId = getCurrentUserId();
+
+  useEffect(() => {
+    setLoading(true);
+    api.get('/').then(res => {
+      if (Array.isArray(res.data)) {
+        setBlogs(res.data)
+      }
+      setLoading(false)
+    }).catch(() => {
+      setLoading(false)
+    })
+  }, [])
+
+  const filteredBlogs = blogs.filter(blog => {
+    if (!searchResult) return true;
+    return (
+      blog.title?.toLowerCase().includes(searchResult) ||
+      blog.content?.toLowerCase().includes(searchResult) ||
+      blog.author?.toLowerCase().includes(searchResult)
+    );
+  });
+
+  useEffect(() => {
+    document.title = `Blogify - ${searchResult ? `Search: ${searchResult}` : 'Home'}`;
+  }, [searchResult]);
+
+  return (
+    <>
+      <div className="page-wrapper">
+        
+        {searchResult && (
+          <button 
+            className="btn btn-outline btn-sm" 
+            onClick={() => navigate('/')} 
+            style={{ marginTop: '1rem', marginBottom: '1.5rem', alignSelf: 'flex-start', display: 'flex', alignItems: 'center', gap: '8px' }}
+          >
+            <VscArrowLeft /> Back to Feed
+          </button>
+        )}
+
+        <div className="home-hero fade-in-up">
+          <h1 className="gradient-text">
+            {searchResult ? `Results for "${searchResult}"` : 'Stories Worth Reading'}
+          </h1>
+          <p>
+            {searchResult 
+              ? `Found ${filteredBlogs.length} ${filteredBlogs.length === 1 ? 'blog' : 'blogs'} matching your search.`
+              : 'Discover insightful articles, tutorials, and ideas from our community of writers.'}
+          </p>
+        </div>
+
+        <h2 className="section-title">
+          {searchResult ? 'Search Results' : 'Recent Blog Posts'}
+        </h2>
+
+        {loading && (
+          <div style={{ textAlign: 'center', padding: '4rem 0' }}>
+            <div className="spinner" />
+          </div>
+        )}
+
+        {!loading && filteredBlogs.length === 0 && (
+          <div className="empty-state">
+            <h3>{searchResult ? 'No matches found' : 'No posts yet'}</h3>
+            <p>{searchResult ? 'Try different keywords or browse recent blogs.' : 'Be the first to publish something great!'}</p>
+            {searchResult && (
+              <Link to="/" className="btn btn-outline btn-sm" style={{ marginTop: '1rem' }}>
+                Clear Search
+              </Link>
+            )}
+          </div>
+        )}
+
+        {!loading && filteredBlogs.length > 0 && (
+          <div className="blog-grid">
+            {filteredBlogs.map((blog, i) => (
+              <BlogCard key={blog._id || i} blog={blog} index={i} currentUserId={currentUserId} />
+            ))}
+          </div>
+        )}
+
+      </div>
+    </>
+  )
+}
+
+export default Home
