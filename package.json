@@ -14,7 +14,12 @@
     "tauri:build:x86": "cross-env PATH=\"%PATH%;%INIT_CWD%\" tauri build --target i686-pc-windows-msvc --config src-tauri/tauri.x86.conf.json",
     "push:build": "git add . && git commit -m \"Sync before build\" && git push && npm run tauri:build",
     "push:build:x86": "git add . && git commit -m \"Sync before x86 build\" && git push && npm run tauri:build:x86",
-    "android:build": "cross-env PATH=\"%PATH%;%INIT_CWD%\" tauri build --target aarch64-linux-android --config src-tauri/tauri.android.conf.json"
+    "android:build": "cross-env PATH=\"%PATH%;%INIT_CWD%\" tauri build --target aarch64-linux-android --config src-tauri/tauri.conf.json",
+    "push:android:build": "git add . && git commit -m \"Sync before android build\" && git push && npm run android:build",
+    "android:dev": "cross-env PATH=\"%PATH%;%INIT_CWD%\" tauri dev --target aarch64-linux-android --config src-tauri/tauri.conf.json",
+    "push:android:dev": "git add . && git commit -m \"Sync before android dev\" && git push && npm run android:dev",
+    "android:run": "cross-env PATH=\"%PATH%;%INIT_CWD%\" tauri dev --target aarch64-linux-android --config src-tauri/tauri.conf.json --no-server",
+    "push:android:run": "git add . && git commit -m \"Sync before android run\" && git push && npm run android:run"
   },
   "dependencies": {
     "@tauri-apps/api": "^2.1.1",
