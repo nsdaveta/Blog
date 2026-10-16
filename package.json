@@ -13,7 +13,8 @@
     "tauri:build": "cross-env PATH=\"%PATH%;%INIT_CWD%\" tauri build",
     "tauri:build:x86": "cross-env PATH=\"%PATH%;%INIT_CWD%\" tauri build --target i686-pc-windows-msvc --config src-tauri/tauri.x86.conf.json",
     "push:build": "git add . && git commit -m \"Sync before build\" && git push && npm run tauri:build",
-    "push:build:x86": "git add . && git commit -m \"Sync before x86 build\" && git push && npm run tauri:build:x86"
+    "push:build:x86": "git add . && git commit -m \"Sync before x86 build\" && git push && npm run tauri:build:x86",
+    "android:build": "cross-env PATH=\"%PATH%;%INIT_CWD%\" tauri build --target aarch64-linux-android --config src-tauri/tauri.android.conf.json"
   },
   "dependencies": {
     "@tauri-apps/api": "^2.1.1",
