@@ -22,7 +22,7 @@
     "push:android:run": "git add . && git commit -m \"Sync before android run\" && git push && npm run android:run"
   },
   "dependencies": {
-    "@tauri-apps/api": "^2.1.1",
+    "@tauri-apps/api": "^2.1.1", 
     "@tauri-apps/plugin-dialog": "^2.7.0",
     "@tauri-apps/plugin-opener": "^2.1.0",
     "@tauri-apps/plugin-os": "^2.1.0",
@@ -46,8 +46,7 @@
     "eslint-plugin-react-hooks": "^7.0.1",
     "eslint-plugin-react-refresh": "^0.4.24",
     "globals": "^16.5.0",
-    "typescript": "^6.0.2",
-    "vite": "^7.3.1"
+    "typescript": "^6.0.2"
   },
   "author": "Navjot Singh Daveta",
   "description": "Blog App"
